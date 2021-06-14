@@ -95,5 +95,6 @@ public class ArraySortingClient implements Runnable {
         } finally {
             statsCounter.finish();
         }
+        contextLogger.info("Finished");
     }
 }

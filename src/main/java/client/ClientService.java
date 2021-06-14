@@ -3,6 +3,7 @@ package client;
 import logger.ContextLogger;
 import protocol.ListTransferringProtocol;
 import protocol.PrimitiveListTransferringProtocol;
+import server.ArraySortingServer;
 
 import java.net.InetSocketAddress;
 import java.util.ArrayList;
@@ -11,7 +12,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
-public class ClientService {
+public class ClientService implements Runnable {
     private final List<ArraySortingClient> allClients = new ArrayList<>();
     private final SimultaneousJobsStats stats;
     private final ContextLogger logger = new ContextLogger("ClientService", false);
@@ -24,10 +25,11 @@ public class ClientService {
                     20,
                     50,
                     new PrimitiveListTransferringProtocol(),
-                    new InetSocketAddress(8000),
+                    8000,
                     false
             );
-            System.out.printf("Average request millis: %d",  clientService.runClients());
+            clientService.run();
+            System.out.printf("Average request millis: %d",  clientService.getAverageRun());
         } catch (Throwable e) {
             e.printStackTrace();
         }
@@ -38,7 +40,7 @@ public class ClientService {
                          int clientRequestDelta,
                          int clientRequestsTotal,
                          ListTransferringProtocol listProtocol,
-                         InetSocketAddress serverAddress,
+                         int port,
                          boolean logInfo) {
         stats = new SimultaneousJobsStats(clientsTotal);
         for (int i = 0; i < clientsTotal; ++i) {
@@ -47,13 +49,18 @@ public class ClientService {
                     clientRequestDelta,
                     clientRequestsTotal,
                     listProtocol,
-                    serverAddress,
+                    new InetSocketAddress(port),
                     stats,
                     logInfo));
         }
     }
 
-    public long runClients() {
+    public long getAverageRun() {
+        return TimeUnit.NANOSECONDS.toMillis(stats.getAllJobsAverageStat());
+    }
+
+    @Override
+    public void run() {
         ExecutorService executor = Executors.newFixedThreadPool(allClients.size());
         logger.info("Starting client service");
         allClients.forEach(executor::submit);
@@ -65,6 +72,5 @@ public class ClientService {
         } catch (InterruptedException e) {
             logger.handleException(e);
         }
-        return TimeUnit.NANOSECONDS.toMillis(stats.getAllJobsAverageStat());
     }
 }

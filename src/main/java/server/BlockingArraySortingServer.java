@@ -11,6 +11,7 @@ import java.nio.channels.SocketChannel;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 public class BlockingArraySortingServer extends ClientAcceptingServer {
     private final boolean logInfo;
@@ -50,8 +51,21 @@ public class BlockingArraySortingServer extends ClientAcceptingServer {
 
         @Override
         public void close() throws IOException {
+            handlerLogger.info("Closing");
             super.close();
             isWorking = false;
+            reader.shutdownNow();
+            writer.shutdownNow();
+            try {
+                boolean finished = reader.awaitTermination(5, TimeUnit.SECONDS)
+                        && writer.awaitTermination(5, TimeUnit.SECONDS);
+                if (!finished) {
+                    throw new RuntimeException("Blocking client handler reader or writer won't close");
+                }
+            } catch (InterruptedException e) {
+                handlerLogger.handleException(e);
+            }
+            handlerLogger.info("Closed");
         }
 
         public void handle() {

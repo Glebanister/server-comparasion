@@ -33,7 +33,7 @@ public class NonBlockingArraySortingServer extends ClientAcceptingServer {
         }
     }
 
-    public NonBlockingArraySortingServer(ListTransferringProtocol protocol, int port, boolean logInfo) throws IOException {
+    public NonBlockingArraySortingServer(ListTransferringProtocol protocol, int port, boolean logInfo) {
         super(protocol, port, logInfo);
         selectorRunners.submit(readingSelector);
         selectorRunners.submit(writingSelector);
@@ -48,6 +48,8 @@ public class NonBlockingArraySortingServer extends ClientAcceptingServer {
     @Override
     public void close() throws IOException {
         super.close();
+        readingSelector.close();
+        writingSelector.close();
         selectorRunners.shutdown();
         try {
             if (!selectorRunners.awaitTermination(5, TimeUnit.SECONDS)) {
@@ -146,8 +148,12 @@ public class NonBlockingArraySortingServer extends ClientAcceptingServer {
         private final Lock socketRegistrationLock = new ReentrantLock();
         protected final ContextLogger selectorLogger = new ContextLogger("Selector", false);
 
-        protected SelectorHolder(int selectorInterests) throws IOException {
-            this.selector = Selector.open();
+        protected SelectorHolder(int selectorInterests) {
+            try {
+                this.selector = Selector.open();
+            } catch (IOException e) {
+                throw new RuntimeException("Unable to open selector");
+            }
             this.selectorInterests = selectorInterests;
             this.nonRegisteredHandlers = new ArrayDeque<>();
         }
@@ -181,6 +187,9 @@ public class NonBlockingArraySortingServer extends ClientAcceptingServer {
             while (isRunning) {
                 try {
                     selector.select();
+                    if (!isRunning) {
+                        break;
+                    }
                     Iterator<SelectionKey> iterator = selector.selectedKeys().iterator();
                     while (iterator.hasNext()) {
                         SelectionKey key = iterator.next();
@@ -210,7 +219,7 @@ public class NonBlockingArraySortingServer extends ClientAcceptingServer {
     }
 
     private class WritingSelectorHolder extends SelectorHolder {
-        private WritingSelectorHolder() throws IOException {
+        private WritingSelectorHolder() {
             super(SelectionKey.OP_WRITE);
         }
 
@@ -225,7 +234,7 @@ public class NonBlockingArraySortingServer extends ClientAcceptingServer {
     }
 
     private class ReadingSelectorHolder extends SelectorHolder {
-        private ReadingSelectorHolder() throws IOException {
+        private ReadingSelectorHolder() {
             super(SelectionKey.OP_READ);
         }
 

@@ -1,6 +1,8 @@
 package logger;
 
+import java.util.Arrays;
 import java.util.logging.Logger;
+import java.util.stream.Collectors;
 
 public class ContextLogger {
     private final String context;
@@ -12,7 +14,12 @@ public class ContextLogger {
     }
 
     public void handleException(Throwable e) {
-        Logger.getGlobal().warning(String.format("%s: %s", context, e));
+        Logger.getGlobal().warning(String.format("%s: Error: %s\n Stack trace: %s\n",
+                context,
+                e,
+                Arrays.stream(e.getStackTrace())
+                        .map(Object::toString)
+                        .collect(Collectors.joining("\n"))));
     }
 
     public void info(String message) {

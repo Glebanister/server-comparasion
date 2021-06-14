@@ -5,12 +5,14 @@ import protocol.ListTransferringProtocol;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
+import java.nio.channels.ClosedByInterruptException;
 import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
@@ -58,10 +60,15 @@ public abstract class ClientAcceptingServer extends ArraySortingServer {
                 serverServeLock.unlock();
             }
             while (running()) {
-                ClientHandler handler = makeClientHandler(serverSocket.accept());
-                serverLogger.info(String.format("Client connected: %s", handler.socket.getRemoteAddress()));
-                clients.add(handler);
-                handler.handle();
+                try {
+                    ClientHandler handler = makeClientHandler(serverSocket.accept());
+                    serverLogger.info(String.format("Client connected: %s", handler.socket.getRemoteAddress()));
+                    clients.add(handler);
+                    handler.handle();
+                } catch (ClosedByInterruptException ignored) {
+                    serverLogger.info("Server interrupted");
+                    close();
+                }
             }
         } catch (IOException e) {
             serverLogger.handleException(e);
@@ -84,10 +91,20 @@ public abstract class ClientAcceptingServer extends ArraySortingServer {
 
     @Override
     public void close() throws IOException {
+        serverLogger.info("Closing");
         super.close();
         for (ClientHandler client : clients) {
             client.close();
         }
+        clientTaskExecutor.shutdownNow();
+        try {
+            if (!clientTaskExecutor.awaitTermination(2, TimeUnit.SECONDS)) {
+                throw new RuntimeException("Client task executor won't close");
+            }
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+        serverLogger.info("Closed");
     }
 
     public abstract static class ClientHandler {
