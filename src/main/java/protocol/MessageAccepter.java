@@ -43,10 +43,6 @@ public class MessageAccepter {
         return Optional.ofNullable(acceptedList);
     }
 
-    public int getHeaderSize() {
-        return messageLengthBuffer.capacity();
-    }
-
     public int getRemaining() {
         if (messageLength == UNDEFINED_LENGTH) {
             return messageLengthBuffer.remaining();

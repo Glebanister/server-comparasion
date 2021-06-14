@@ -14,17 +14,18 @@ import java.util.concurrent.TimeUnit;
 public class ClientService {
     private final List<ArraySortingClient> allClients = new ArrayList<>();
     private final SimultaneousJobsStats stats;
-    private final ContextLogger logger = new ContextLogger("ClientService", true);
+    private final ContextLogger logger = new ContextLogger("ClientService", false);
 
     public static void main(String[] args) {
         try {
             ClientService clientService = new ClientService(
                     100,
+                    50,
                     20,
                     50,
-                    10,
                     new PrimitiveListTransferringProtocol(),
-                    new InetSocketAddress(8000)
+                    new InetSocketAddress(8000),
+                    false
             );
             System.out.printf("Average request millis: %d",  clientService.runClients());
         } catch (Throwable e) {
@@ -37,7 +38,8 @@ public class ClientService {
                          int clientRequestDelta,
                          int clientRequestsTotal,
                          ListTransferringProtocol listProtocol,
-                         InetSocketAddress serverAddress) {
+                         InetSocketAddress serverAddress,
+                         boolean logInfo) {
         stats = new SimultaneousJobsStats(clientsTotal);
         for (int i = 0; i < clientsTotal; ++i) {
             allClients.add(new ArraySortingClient(
@@ -46,7 +48,8 @@ public class ClientService {
                     clientRequestsTotal,
                     listProtocol,
                     serverAddress,
-                    stats));
+                    stats,
+                    logInfo));
         }
     }
 

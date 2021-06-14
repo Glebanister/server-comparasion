@@ -3,21 +3,24 @@ package server;
 import logger.ContextLogger;
 import protocol.ListTransferringProtocol;
 
-import javax.naming.Context;
+import java.io.Closeable;
 import java.io.IOException;
-import java.net.ProtocolException;
-import java.nio.ByteBuffer;
 import java.util.*;
-import java.util.logging.Logger;
 
-public abstract class ArraySortingServer implements Runnable {
-    private final ContextLogger logger;
-    protected final ListTransferringProtocol protocol;
+public abstract class ArraySortingServer implements Runnable, Closeable {
+    protected final ContextLogger serverLogger;
+    private volatile boolean isRunning;
+    private final ListTransferringProtocol protocol;
+    private final int port;
 
-    public ArraySortingServer(ContextLogger logger, ListTransferringProtocol protocol) {
-        this.logger = logger;
+    public ArraySortingServer(ListTransferringProtocol protocol, int port, boolean logInfo) {
+        this.serverLogger = new ContextLogger("Server", logInfo);
+        this.port = port;
+        this.isRunning = true;
         this.protocol = protocol;
     }
+
+    public abstract void awaitServed();
 
     protected void sortArray(List<Integer> ints) {
         for (int i = 0; i < ints.size(); ++i) {
@@ -29,11 +32,25 @@ public abstract class ArraySortingServer implements Runnable {
         }
     }
 
-    protected void handleIOException(IOException e) {
-        logger.handleException(e);
+    public boolean running() {
+        return isRunning;
     }
 
-    protected void printInfo(String message) {
-        logger.info(message);
+    public int getPort() {
+        return port;
+    }
+
+    public ListTransferringProtocol getProtocol() {
+        return protocol;
+    }
+
+    @Override
+    public void close() throws IOException {
+        isRunning = false;
+    }
+
+    @Override
+    public void run() {
+        isRunning = true;
     }
 }

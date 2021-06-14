@@ -27,14 +27,15 @@ public class ArraySortingClient implements Runnable {
                               int requestsTotal,
                               ListTransferringProtocol listProtocol,
                               InetSocketAddress serverAddress,
-                              SimultaneousJobsStats statsCounter) {
+                              SimultaneousJobsStats statsCounter,
+                              boolean logInfo) {
         this.arrayLength = arrayLength;
         this.requestDeltaMs = requestDeltaMs;
         this.requestsTotal = requestsTotal;
         this.listProtocol = listProtocol;
         this.serverAddress = serverAddress;
         this.statsCounter = statsCounter.registerStats();
-        this.contextLogger = new ContextLogger(String.format("Client %s", this), true);
+        this.contextLogger = new ContextLogger(String.format("Client %s", this), logInfo);
     }
 
     @Override
