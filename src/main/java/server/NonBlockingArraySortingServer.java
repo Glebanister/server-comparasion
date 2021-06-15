@@ -47,7 +47,6 @@ public class NonBlockingArraySortingServer extends ClientAcceptingServer {
 
     @Override
     public void close() throws IOException {
-        super.close();
         readingSelector.close();
         writingSelector.close();
         selectorRunners.shutdown();
@@ -55,9 +54,11 @@ public class NonBlockingArraySortingServer extends ClientAcceptingServer {
             if (!selectorRunners.awaitTermination(5, TimeUnit.SECONDS)) {
                 throw new TimeoutException("Selectors won't terminate");
             }
-        } catch (InterruptedException | TimeoutException e) {
+        } catch (InterruptedException ignored) {
+        } catch (TimeoutException e) {
             serverLogger.handleException(e);
         }
+        super.close();
     }
 
     private class NonBlockingClientHandler extends ClientHandler {
@@ -77,9 +78,6 @@ public class NonBlockingArraySortingServer extends ClientAcceptingServer {
             toSendQueue.add(buffer);
         }
 
-        /**
-         * @return If corresponding SelectionKey may be cancelled.
-         */
         public boolean write() throws IOException {
             while (!toSendQueue.isEmpty()) {
                 handlerLogger.info("Writing buffer to socket");
@@ -94,9 +92,6 @@ public class NonBlockingArraySortingServer extends ClientAcceptingServer {
             return true;
         }
 
-        /**
-         * @return If corresponding SelectionKey may be cancelled.
-         */
         public boolean read() throws IOException {
             while (true) {
                 ByteBuffer buffer = ByteBuffer.allocate(messageAccepter.getRemaining());
@@ -187,17 +182,6 @@ public class NonBlockingArraySortingServer extends ClientAcceptingServer {
             while (isRunning) {
                 try {
                     selector.select();
-                    if (!isRunning) {
-                        break;
-                    }
-                    Iterator<SelectionKey> iterator = selector.selectedKeys().iterator();
-                    while (iterator.hasNext()) {
-                        SelectionKey key = iterator.next();
-                        if ((key.interestOps() & selectorInterests) > 0) {
-                            handleSelectedClient(key);
-                        }
-                        iterator.remove();
-                    }
                     socketRegistrationLock.lock();
                     try {
                         for (ClientHandler newClient : nonRegisteredHandlers) {
@@ -209,6 +193,15 @@ public class NonBlockingArraySortingServer extends ClientAcceptingServer {
                         nonRegisteredHandlers.clear();
                     } finally {
                         socketRegistrationLock.unlock();
+                    }
+
+                    Iterator<SelectionKey> iterator = selector.selectedKeys().iterator();
+                    while (iterator.hasNext()) {
+                        SelectionKey key = iterator.next();
+                        if ((key.interestOps() & selectorInterests) > 0) {
+                            handleSelectedClient(key);
+                        }
+                        iterator.remove();
                     }
                 } catch (IOException e) {
                     selectorLogger.handleException(e);

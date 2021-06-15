@@ -10,6 +10,9 @@ import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
 import java.nio.channels.SocketChannel;
 import java.util.*;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
@@ -40,7 +43,6 @@ public class ArraySortingClient implements Runnable {
 
     @Override
     public void run() {
-        contextLogger.info("Running");
         List<Integer> arrayToSort = new ArrayList<>();
         List<Integer> sortedArray = new ArrayList<>();
         Random rand = new Random();
@@ -50,48 +52,78 @@ public class ArraySortingClient implements Runnable {
             sortedArray.add(randInt);
         }
         sortedArray.sort(Comparator.naturalOrder());
-        statsCounter.start();
+        int arrayBufferSize = new MessageCreator(sortedArray, listProtocol).createdBuffer().capacity();
+
         contextLogger.info(String.format("Connecting to server at %s", serverAddress.toString()));
         try (SocketChannel socket = SocketChannel.open()) {
+            statsCounter.start();
+            ExecutorService reader = Executors.newSingleThreadExecutor();
+            ExecutorService writer = Executors.newSingleThreadExecutor();
             socket.connect(serverAddress);
             contextLogger.info("Connected");
 
+            contextLogger.info("Running");
             for (int requestN = 0; requestN < requestsTotal; ++requestN) {
-                Collections.shuffle(arrayToSort, rand);
-                MessageCreator messageCreator = new MessageCreator(arrayToSort, listProtocol);
-                ByteBuffer arrayBuffer = messageCreator.createdBuffer();
-                contextLogger.info(String.format("Sending array %s", arrayToSort.stream().map(Object::toString).collect(Collectors.joining(", "))));
-                long startTime = System.nanoTime();
-                if (socket.write(arrayBuffer) != arrayBuffer.capacity()) {
-                    throw new IOException("Not all bytes were sent");
-                }
-                contextLogger.info("Array sent");
-                arrayBuffer.clear();
-                contextLogger.info("Waiting for sorted array");
-                if (socket.read(arrayBuffer) != arrayBuffer.capacity()) {
-                    throw new IOException("Not all bytes were received");
-                }
-                long timeElapsed = System.nanoTime() - startTime;
-                contextLogger.info(String.format("Time elapsed: %d", timeElapsed));
-                statsCounter.pushStat(timeElapsed);
-                contextLogger.info("Array received");
-                arrayBuffer.flip();
-                MessageAccepter messageAccepter = new MessageAccepter(listProtocol);
-                messageAccepter.accept(arrayBuffer);
-                if (messageAccepter.accepted().isEmpty()) {
-                    throw new IOException("Accepted message has illegal format");
-                }
-                List<Integer> receivedArray = messageAccepter.accepted().get();
-                if (!receivedArray.equals(sortedArray)) {
-                    throw new IOException("Received array is not sorted version of the sent one");
-                }
-                long sleepTime = Math.max(0, TimeUnit.MILLISECONDS.toNanos(requestDeltaMs) - timeElapsed);
+                long iterationStart = System.nanoTime();
+
+                reader.submit(() -> {
+                    ByteBuffer arrayBuffer = ByteBuffer.allocate(arrayBufferSize);
+                    MessageAccepter accepter = new MessageAccepter(listProtocol);
+                    try {
+                        contextLogger.info("Waiting for sorted array");
+                        while (arrayBuffer.hasRemaining()) {
+                            if (socket.read(arrayBuffer) < 0) {
+                                throw new IOException("Not all bytes were received");
+                            }
+                        }
+
+                        statsCounter.pushStat(System.nanoTime() - iterationStart);
+                        arrayBuffer.flip();
+                        accepter.accept(arrayBuffer);
+                        if (accepter.accepted().isEmpty()) {
+                            throw new IOException("Received bytes are ill-formatted");
+                        }
+                        if (!accepter.accepted().get().equals(sortedArray)) {
+                            throw new RuntimeException("Array is not sorted");
+                        }
+                        contextLogger.info("Array received");
+                    } catch (IOException e) {
+                        contextLogger.handleException(e);
+                    }
+                });
+
+                writer.submit(() -> {
+                    MessageCreator messageCreator = new MessageCreator(arrayToSort, listProtocol);
+                    ByteBuffer arrayBuffer = messageCreator.createdBuffer();
+                    try {
+                        while (arrayBuffer.hasRemaining()) {
+                            if (socket.write(arrayBuffer) < 0) {
+                                throw new IOException("Not all bytes were sent");
+                            }
+                        }
+                        contextLogger.info("Array sent");
+                    } catch (IOException e) {
+                        contextLogger.handleException(e);
+                    }
+                });
+
+                long iterationTimeElapsed = System.nanoTime() - iterationStart;
+                long sleepTime = Math.max(0, TimeUnit.MILLISECONDS.toNanos(requestDeltaMs) - iterationTimeElapsed);
                 if (requestN + 1 < requestsTotal) {
                     Thread.sleep(TimeUnit.NANOSECONDS.toMillis(sleepTime));
                 }
             }
-        } catch (IOException | InterruptedException e) {
+
+            reader.shutdown();
+            writer.shutdown();
+
+            boolean finished = reader.awaitTermination(5, TimeUnit.MINUTES) && writer.awaitTermination(5, TimeUnit.MINUTES);
+            if (!finished) {
+                throw new RuntimeException("Client's reader and writers are running too long");
+            }
+        } catch (IOException e) {
             contextLogger.handleException(e);
+        } catch (InterruptedException ignored) {
         } finally {
             statsCounter.finish();
         }

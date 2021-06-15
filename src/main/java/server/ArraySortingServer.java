@@ -9,7 +9,7 @@ import java.util.*;
 
 public abstract class ArraySortingServer implements Runnable, Closeable {
     protected final ContextLogger serverLogger;
-    private volatile boolean isRunning;
+    protected volatile boolean isRunning;
     private final ListTransferringProtocol protocol;
     private final int port;
 

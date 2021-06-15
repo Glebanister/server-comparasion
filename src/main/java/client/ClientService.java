@@ -29,7 +29,7 @@ public class ClientService implements Runnable {
                     false
             );
             clientService.run();
-            System.out.printf("Average request millis: %d",  clientService.getAverageRun());
+            System.out.printf("Average request millis: %d", clientService.getAverageRun());
         } catch (Throwable e) {
             e.printStackTrace();
         }
@@ -55,8 +55,8 @@ public class ClientService implements Runnable {
         }
     }
 
-    public long getAverageRun() {
-        return TimeUnit.NANOSECONDS.toMillis(stats.getAllJobsAverageStat());
+    public double getAverageRun() {
+        return ((double) TimeUnit.NANOSECONDS.toMicros(stats.getAllJobsAverageStat()) / 1000.0);
     }
 
     @Override
@@ -69,8 +69,7 @@ public class ClientService implements Runnable {
             if (!executor.awaitTermination(5, TimeUnit.MINUTES)) {
                 throw new RuntimeException("ClientService run is too long");
             }
-        } catch (InterruptedException e) {
-            logger.handleException(e);
+        } catch (InterruptedException ignored) {
         }
     }
 }

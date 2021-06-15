@@ -35,11 +35,6 @@ public class BlockingArraySortingServer extends ClientAcceptingServer {
         return new BlockingClientHandler(socket, logInfo);
     }
 
-    @Override
-    public void close() throws IOException {
-        super.close();
-    }
-
     private class BlockingClientHandler extends ClientHandler {
         private final ExecutorService reader = Executors.newSingleThreadExecutor();
         private final ExecutorService writer = Executors.newSingleThreadExecutor();
@@ -52,19 +47,18 @@ public class BlockingArraySortingServer extends ClientAcceptingServer {
         @Override
         public void close() throws IOException {
             handlerLogger.info("Closing");
-            super.close();
             isWorking = false;
-            reader.shutdownNow();
-            writer.shutdownNow();
+            reader.shutdown();
+            writer.shutdown();
             try {
-                boolean finished = reader.awaitTermination(5, TimeUnit.SECONDS)
-                        && writer.awaitTermination(5, TimeUnit.SECONDS);
+                boolean finished = writer.awaitTermination(5, TimeUnit.SECONDS)
+                        && reader.awaitTermination(5, TimeUnit.SECONDS);
                 if (!finished) {
                     throw new RuntimeException("Blocking client handler reader or writer won't close");
                 }
-            } catch (InterruptedException e) {
-                handlerLogger.handleException(e);
+            } catch (InterruptedException ignored) {
             }
+            super.close();
             handlerLogger.info("Closed");
         }
 
@@ -74,6 +68,10 @@ public class BlockingArraySortingServer extends ClientAcceptingServer {
                     List<Integer> clientArray;
                     try {
                         clientArray = readArray();
+                        if (clientArray == null) {
+                            isWorking = false;
+                            break;
+                        }
                     } catch (IOException e) {
                         isWorking = false;
                         break;
@@ -97,22 +95,32 @@ public class BlockingArraySortingServer extends ClientAcceptingServer {
             handlerLogger.info(String.format("Reading array from %s", socket.getLocalAddress()));
             while (accepter.getRemaining() != 0) {
                 ByteBuffer anotherPart = ByteBuffer.allocate(accepter.getRemaining());
-                socket.read(anotherPart);
+                while (anotherPart.hasRemaining()) {
+                    int bytesRead = socket.read(anotherPart);
+                    if (bytesRead < 0) {
+                        return null;
+                    }
+                }
                 anotherPart.flip();
                 accepter.accept(anotherPart);
             }
             if (accepter.accepted().isEmpty()) {
                 throw new RuntimeException("Server didn't receive all array");
             }
-            handlerLogger.info(String.format("Read array: %s", accepter.accepted().get()));
+            handlerLogger.info("Read array");
             return accepter.accepted().get();
         }
 
         private void writeArray(List<Integer> array) throws IOException {
-            handlerLogger.info(String.format("Writing array: %s", array));
+            handlerLogger.info("Writing array");
             MessageCreator creator = new MessageCreator(array, getProtocol());
-            socket.write(creator.createdBuffer());
-            handlerLogger.info(String.format("Array is written: %s", array));
+            while (creator.createdBuffer().hasRemaining()) {
+                int bytesWritten = socket.write(creator.createdBuffer());
+                if (bytesWritten < 0) {
+                    throw new IOException("Server couldn't send an array");
+                }
+            }
+            handlerLogger.info("Array is written");
         }
     }
 }

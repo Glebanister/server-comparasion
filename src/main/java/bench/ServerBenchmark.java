@@ -14,7 +14,7 @@ import server.NonBlockingArraySortingServer;
 import static bench.input.EnumParameterReader.option;
 import static bench.VaryingParamsIterator.VaryingParameter;
 
-import java.io.IOException;
+import java.io.*;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -25,9 +25,11 @@ public class ServerBenchmark implements Runnable {
     private final ArraySortingServer server;
     private final ClientService clientService;
 
-    public static void main(String[] args) {
+    public static void main(String[] args) throws IOException {
         ListTransferringProtocol protocol = new PrimitiveListTransferringProtocol();
         int port = 8000;
+        InputStream is = System.in;
+        PrintWriter os = new PrintWriter("benchmark.txt");
 
         System.out.println("Server benchmark, choose options");
         ServerSupplierAndName blockingServer = new ServerSupplierAndName(
@@ -61,19 +63,19 @@ public class ServerBenchmark implements Runnable {
         RangeReader clientsRangeR = new RangeReader("Total clients range", 1, true);
         RangeReader deltaRangeR = new RangeReader("Time delta range, ms", 0, true);
 
-        ServerSupplierAndName server = serverR.get();
-        int clientQueries = queriesR.get();
-        VaryingParameter param = varyingR.get();
+        ServerSupplierAndName server = serverR.get(is);
+        int clientQueries = queriesR.get(is);
+        VaryingParameter param = varyingR.get(is);
         VaryingParamsIterator allParams;
         switch (param) {
             case AR_LENGTH:
-                allParams = new VaryingParamsIterator(arrayLengthRangeR.get(), clientsR.get(), deltaR.get());
+                allParams = new VaryingParamsIterator(arrayLengthRangeR.get(is), clientsR.get(is), deltaR.get(is));
                 break;
             case TOTAL_CLIENTS:
-                allParams = new VaryingParamsIterator(arrayLengthR.get(), clientsRangeR.get(), deltaR.get());
+                allParams = new VaryingParamsIterator(arrayLengthR.get(is), clientsRangeR.get(is), deltaR.get(is));
                 break;
             case DELTA:
-                allParams = new VaryingParamsIterator(arrayLengthR.get(), clientsR.get(), deltaRangeR.get());
+                allParams = new VaryingParamsIterator(arrayLengthR.get(is), clientsR.get(is), deltaRangeR.get(is));
                 break;
             default:
                 throw new IllegalStateException("Unexpected varying: " + param);
@@ -100,8 +102,12 @@ public class ServerBenchmark implements Runnable {
                     false
             ));
             benchmark.run();
-            System.out.printf("\t- Average client waiting time: %d\n\n", benchmark.getAverageClientWaitingTime());
+            double avgTime = benchmark.getAverageClientWaitingTime();
+            System.out.printf("\t- Average client waiting time, ms: % .4f\n\n", avgTime);
+            os.printf("%f,", avgTime);
         }
+        is.close();
+        os.close();
     }
 
     public ServerBenchmark(ArraySortingServer server, ClientService clientService) {
@@ -109,7 +115,7 @@ public class ServerBenchmark implements Runnable {
         this.clientService = clientService;
     }
 
-    public long getAverageClientWaitingTime() {
+    public double getAverageClientWaitingTime() {
         return clientService.getAverageRun();
     }
 
@@ -119,18 +125,12 @@ public class ServerBenchmark implements Runnable {
         serverExecutor.submit(server);
         server.awaitServed();
         clientService.run();
-        try {
-            server.close();
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
         serverExecutor.shutdownNow();
         try {
             if (!serverExecutor.awaitTermination(10, TimeUnit.SECONDS)) {
                 throw new RuntimeException("Server won't close");
             }
-        } catch (InterruptedException e) {
-            e.printStackTrace();
+        } catch (InterruptedException ignored) {
         }
     }
 

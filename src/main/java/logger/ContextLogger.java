@@ -24,7 +24,11 @@ public class ContextLogger {
 
     public void info(String message) {
         if (actuallyLogInfo) {
-            Logger.getGlobal().info(String.format("%s: %s", context, message));
+            importantInfo(message);
         }
+    }
+
+    public void importantInfo(String message) {
+        Logger.getGlobal().info(String.format("%s: %s", context, message));
     }
 }

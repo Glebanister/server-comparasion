@@ -36,7 +36,7 @@ public abstract class ClientAcceptingServer extends ArraySortingServer {
     public ClientAcceptingServer(ListTransferringProtocol protocol,
                                  int port,
                                  boolean logInfo) {
-        this(protocol, port, Runtime.getRuntime().availableProcessors() - 2, logInfo);
+        this(protocol, port, Runtime.getRuntime().availableProcessors(), logInfo);
     }
 
     public void submitClientTask(Runnable task) {
@@ -82,8 +82,7 @@ public abstract class ClientAcceptingServer extends ArraySortingServer {
             while (!isServerServed) {
                 serverServed.await();
             }
-        } catch (InterruptedException e) {
-            serverLogger.handleException(e);
+        } catch (InterruptedException ignored) {
         } finally {
             serverServeLock.unlock();
         }
@@ -101,8 +100,7 @@ public abstract class ClientAcceptingServer extends ArraySortingServer {
             if (!clientTaskExecutor.awaitTermination(2, TimeUnit.SECONDS)) {
                 throw new RuntimeException("Client task executor won't close");
             }
-        } catch (InterruptedException e) {
-            e.printStackTrace();
+        } catch (InterruptedException ignored) {
         }
         serverLogger.info("Closed");
     }

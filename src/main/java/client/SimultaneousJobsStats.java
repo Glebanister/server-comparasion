@@ -2,17 +2,18 @@ package client;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 
 public class SimultaneousJobsStats {
-    private final AtomicInteger jobsToStart;
+    private final CountDownLatch startLatch;
     private final AtomicBoolean oneJobFinished;
     private final List<SingleSimultaneousJobStats> registeredJobs;
 
     public SimultaneousJobsStats(int jobsToStart) {
-        this.jobsToStart = new AtomicInteger(jobsToStart);
+        this.startLatch = new CountDownLatch(jobsToStart);
         this.oneJobFinished = new AtomicBoolean(false);
         this.registeredJobs = new ArrayList<>();
     }
@@ -33,14 +34,6 @@ public class SimultaneousJobsStats {
         return runsSum / runsCount;
     }
 
-    public int getJobsToStart() {
-        return jobsToStart.get();
-    }
-
-    public int decrementJobsToStart() {
-        return jobsToStart.decrementAndGet();
-    }
-
     public boolean isOneJobFinished() {
         return oneJobFinished.get();
     }
@@ -59,17 +52,16 @@ public class SimultaneousJobsStats {
         }
 
         public void pushStat(long executionTime) {
-            if (getJobsToStart() > 0 || isOneJobFinished()) {
+            if (isOneJobFinished()) {
                 return;
             }
             nanosTotal.addAndGet(executionTime);
             runsTotal.incrementAndGet();
         }
 
-        public void start() {
-            if (decrementJobsToStart() < 0) {
-                throw new IllegalStateException("More jobs started than registered");
-            }
+        public void start() throws InterruptedException {
+            startLatch.countDown();
+            startLatch.await();
         }
 
         public void finish() {

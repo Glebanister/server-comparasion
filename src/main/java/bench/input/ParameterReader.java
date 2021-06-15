@@ -1,5 +1,6 @@
 package bench.input;
 
+import java.io.InputStream;
 import java.util.Optional;
 import java.util.Scanner;
 
@@ -14,10 +15,10 @@ public abstract class ParameterReader<T> {
 
     public abstract Optional<T> validate(String input);
 
-    public T get() {
+    public T get(InputStream is) {
         System.out.println(description);
         System.out.println(options);
-        Scanner scanner = new Scanner(System.in);
+        Scanner scanner = new Scanner(is);
         String input = readLine(scanner);
         Optional<T> result = validate(input);
         while (result.isEmpty()) {
